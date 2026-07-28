@@ -1,4 +1,4 @@
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+﻿local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
@@ -206,78 +206,133 @@ end
 
 local function EnableESP()
     ESPEnabled = true
+    
+    -- ใส่ ESP ให้ผู้เล่นทุกคนที่มีอยู่ในปัจจุบัน
     for _, p in pairs(Players:GetPlayers()) do
         ApplyESP(p)
     end
-    local pAdded = Players.PlayerAdded:Connect(ApplyESP)
+    
+    -- เมื่อมีผู้เล่นใหม่เข้ามา
+    local pAdded = Players.PlayerAdded:Connect(function(p)
+        if not ESPEnabled then return end
+        
+        -- ถ้าตัวละครเกิดอยู่แล้ว ให้เรียกเลย
+        if p.Character then
+            ApplyESP(p)
+        end
+        
+        -- ดักจับเมื่อผู้เล่นเกิดใหม่ (หรือโหลดตัวละครเสร็จ)
+        local charAdded = p.CharacterAdded:Connect(function(character)
+            if ESPEnabled then
+                ApplyESP(p)
+            end
+        end)
+        
+        table.insert(GlobalConnections, charAdded)
+    end)
+    
     local pRemoving = Players.PlayerRemoving:Connect(function(p)
         CleanupPlayerESP(p)
     end)
+    
     table.insert(GlobalConnections, pAdded)
     table.insert(GlobalConnections, pRemoving)
 end
 
 local function DisableESP()
     ESPEnabled = false
+    
+    -- ตัดการเชื่อมต่อ Connections ทั้งหมด
     for _, conn in pairs(GlobalConnections) do
-        conn:Disconnect()
+        if conn and conn.Connected then
+            conn:Disconnect()
+        end
     end
     table.clear(GlobalConnections)
+    
+    -- ล้างข้อมูล ESP ที่ค้างอยู่
     for player, _ in pairs(ActiveESP) do
         CleanupPlayerESP(player)
     end
     table.clear(ActiveESP)
-    ParticleFolder:ClearAllChildren()
+    
+    if ParticleFolder then
+        ParticleFolder:ClearAllChildren()
+    end
 end
 
 
 -- Find Cars
+local Players = game:GetService("Players") 
+local LocalPlayer = Players.LocalPlayer 
+
+local function GetCarCFrame(car)
+    if car:IsA("Model") and car.PrimaryPart then
+        return car.PrimaryPart.CFrame
+    end
+    
+    local seat = car:FindFirstChildWhichIsA("VehicleSeat", true) or car:FindFirstChild("DriveSeat", true)
+    if seat then
+        return seat.CFrame
+    end
+
+    local body = car:FindFirstChild("Body", true)
+    if body then
+        return body:GetPivot()
+    end
+
+    return car:GetPivot()
+end
+
 local function GetNearestCar()
     local character = LocalPlayer.Character
-    if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
+    if not character or not character:FindFirstChild("HumanoidRootPart") then return nil, math.huge end
     
     local playerPos = character.HumanoidRootPart.Position
     local carsFolder = workspace:FindFirstChild("Cars")
     
     if not carsFolder then 
-        warn("ไม่พบโฟลเดอร์ Cars ใน workspace")
-        return nil 
+        print("ไม่พบโฟลเดอร์ Cars ใน workspace")
+        return nil, math.huge 
     end
 
-    local nearestCarPart = nil
+    local nearestCar = nil
     local shortestDistance = math.huge
+    local nearestCarCFrame = nil
 
-    for _, carModel in ipairs(carsFolder:GetChildren()) do
-        local carPart = carModel:FindFirstChild("Body") 
-            or carModel.PrimaryPart 
-            or carModel:FindFirstChildWhichIsA("BasePart")
+    for _, car in ipairs(carsFolder:GetChildren()) do
+        local carCFrame = GetCarCFrame(car)
+        
+        if carCFrame then
+            local distance = (playerPos - carCFrame.Position).Magnitude
 
-        if carPart then
-            local distance = (playerPos - carPart.Position).Magnitude
-            
             if distance < shortestDistance then
                 shortestDistance = distance
-                nearestCarPart = carPart
+                nearestCar = car
+                nearestCarCFrame = carCFrame
             end
         end
     end
 
-    return nearestCarPart, shortestDistance
+    return nearestCar, shortestDistance, nearestCarCFrame
 end
 
 local function TeleportToNearestCar()
     local character = LocalPlayer.Character
     if not character or not character:FindFirstChild("HumanoidRootPart") then return end
 
-    local targetPart, distance = GetNearestCar()
+    local targetCar, distance, targetCFrame = GetNearestCar()
 
-    if targetPart then
-        character.HumanoidRootPart.CFrame = targetPart.CFrame * CFrame.new(0, 3, 0)
-        print("วาร์ปไปยังรถแล้ว! ระยะห่างเดิม:", math.floor(distance), "Studs")
+    if targetCar and targetCFrame then
+        -- วาร์ปไปที่ตำแหน่ง DriveSeat/PrimaryPart แล้วขยับขึ้นข้างบน 5 studs
+        character.HumanoidRootPart.CFrame = targetCFrame * CFrame.new(0, 10, 0)
+        
+        print("วาร์ปไปยัง " .. targetCar.Name .. " สำเร็จ! ระยะห่างเดิม:", math.floor(distance), "Studs")
     else
-        warn("ไม่พบรถรอบๆ ตัว")
+        print("ไม่พบตำแหน่งของรถในโฟลเดอร์ Cars")
     end
 end
+
 
 local TeleportValue = {
     "not select",
@@ -286,8 +341,8 @@ local TeleportValue = {
 }
 
 local TeleportList = {
-    ['farm_01']     = Vector3.new(120.5, 15.0, -340.2),
-    ['bunker']      = Vector3.new(-450.0, -20.0, 890.1),
+    ['farm_01']     = Vector3.new(2620.53,289.76,-2956.35),
+    ['bunker']      = Vector3.new(5304.38,128.99,-5807.91),
 }
 
 local Options = Fluent.Options
@@ -311,7 +366,7 @@ do
             local hrp = character:FindFirstChild("HumanoidRootPart")
             
             if hrp then
-                hrp.CFrame = CFrame.new(targetPosition) + Vector3.new(0, 3, 0)
+                hrp.CFrame = CFrame.new(targetPosition) + Vector3.new(0, 5, 0)
             end
         end
     end)
@@ -331,7 +386,7 @@ do
         Title = "Teleport To Nearest Car",
         Description = "วาร์ปไปยังรถที่อยู่ใกล้",
         Callback = function()
-            TeleportToNearestCar()
+			TeleportToNearestCar()
         end
     })
 
