@@ -207,10 +207,9 @@ end
 local ESPLoopThread = nil
 
 local function EnableESP()
-    if ESPEnabled then return end -- ป้องกันการรันซ้ำ
+    if ESPEnabled then return end 
     ESPEnabled = true
 
-    -- ใช้ task.spawn เพื่อให้ Loop ทำงานแยกเบื้องหลัง ไม่ค้าง Thread หลัก
     ESPLoopThread = task.spawn(function()
         while ESPEnabled do
             -- 1. วนเช็กผู้เล่นทุกคนที่อยู่ในเซิร์ฟเวอร์
@@ -221,7 +220,6 @@ local function EnableESP()
                 end
             end
 
-            -- 2. หน่วงเวลาเล็กน้อยเพื่อไม่ให้เครื่องกระตุก (0.5 วินาทีถือว่ากำลังดี)
             task.wait(0.5)
         end
     end)
@@ -249,8 +247,6 @@ end
 
 
 -- Find Cars
-local Players = game:GetService("Players") 
-local LocalPlayer = Players.LocalPlayer 
 
 local function GetCarCFrame(car)
     if car:IsA("Model") and car.PrimaryPart then
