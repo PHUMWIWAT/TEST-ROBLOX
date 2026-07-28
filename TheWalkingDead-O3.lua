@@ -446,18 +446,82 @@ local function DisableFPSBoost()
     table.clear(OriginalSettings.SavedEffects)
 end
 
-local function SetNPCIgnore(state)
-    local LocalPlayer = game:GetService("Players").LocalPlayer
+-- Speed
+
+getgenv().SpeedSettings = getgenv().SpeedSettings or {
+    Enabled = false,
+    Speed = 16,
+    Control = true,
+    Friction = 2.0
+}
+
+local SpeedConnection = nil
+
+local function EnhanceControl(reset)
     local character = LocalPlayer.Character
     if not character then return end
-
-    for _, part in ipairs(character:GetDescendants()) do
-        if part:IsA("BasePart") then
-            part.CanQuery = not state
-            part.CanTouch = not state
+    
+    local rootPart = character:FindFirstChild("HumanoidRootPart")
+    if rootPart then
+        if reset then
+            rootPart.CustomPhysicalProperties = nil
+        else
+            rootPart.CustomPhysicalProperties = PhysicalProperties.new(
+                0.7, 
+                getgenv().SpeedSettings.Friction, 
+                0.5, 
+                1.0, 
+                0.5
+            )
         end
     end
 end
+
+local function SetWalkSpeed(speedValue)
+    local character = LocalPlayer.Character
+    if not character then return end
+    
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if humanoid then
+        humanoid.WalkSpeed = speedValue
+    end
+end
+
+local function EnableSpeed()
+    getgenv().SpeedSettings.Enabled = true
+    
+    if getgenv().SpeedSettings.Control then
+        EnhanceControl(false)
+    end
+
+    if SpeedConnection then SpeedConnection:Disconnect() end
+
+    SpeedConnection = RunService.RenderStepped:Connect(function()
+        if getgenv().SpeedSettings.Enabled then
+            SetWalkSpeed(getgenv().SpeedSettings.Speed)
+        end
+    end)
+end
+
+local function DisableSpeed()
+    getgenv().SpeedSettings.Enabled = false
+
+    if SpeedConnection then
+        SpeedConnection:Disconnect()
+        SpeedConnection = nil
+    end
+
+    SetWalkSpeed(16)
+    EnhanceControl(true)
+end
+
+LocalPlayer.CharacterAdded:Connect(function()
+    task.wait(0.5)
+    if getgenv().SpeedSettings.Enabled then
+        EnableSpeed()
+    end
+end)
+
 
 local TeleportValue = {
     "not select",
@@ -473,7 +537,7 @@ local TeleportList = {
 local Options = Fluent.Options
 
 do
-    
+
     Tabs.Main:AddButton({
         Title = "Teleport To Nearest Car",
         Description = "วาร์ปไปยังรถที่อยู่ใกล้",
@@ -515,8 +579,6 @@ do
         end
     end)
     Options.ESPToggle:SetValue(false)
-
-    -- Toggle สำหรับเปิด/ปิด FPS Boost
     local FPSToggle = Tabs.Main:AddToggle("FPSToggle", { Title = "FPS Boost (Optimized)", Default = false })
     FPSToggle:OnChanged(function()
         local state = Options.FPSToggle.Value
@@ -527,15 +589,30 @@ do
         end
     end)
     Options.FPSToggle:SetValue(false)
-
-    local IgnoreToggle = Tabs.Main:AddToggle("IgnoreToggle", { Title = "Walkers Ignore Me", Default = false })
-
-    IgnoreToggle:OnChanged(function()
-        local state = Options.IgnoreToggle.Value
-        SetNPCIgnore(state)
+    
+    local SpeedToggle = Tabs.Main:AddToggle("SpeedToggle", { Title = "WalkSpeed Hack", Default = false })
+    SpeedToggle:OnChanged(function()
+        local state = Options.SpeedToggle.Value
+        if state then
+            EnableSpeed()
+        else
+            DisableSpeed()
+        end
     end)
-
-    Options.IgnoreToggle:SetValue(false)
+    local SpeedSlider = Tabs.Main:AddSlider("SpeedSlider", {
+        Title = "Speed Value",
+        Description = "ปรับความเร็วการเดิน/วิ่ง",
+        Default = 16,
+        Min = 16,
+        Max = 45,
+        Rounding = 0,
+        Callback = function(Value)
+            getgenv().SpeedSettings.Speed = Value
+            if getgenv().SpeedSettings.Enabled then
+                SetWalkSpeed(Value)
+            end
+        end
+    })
 
 end
 
