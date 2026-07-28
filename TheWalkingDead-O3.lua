@@ -17,237 +17,223 @@ local Tabs = {
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
-local Settings = {
-    Color1 = Color3.fromRGB(0, 0, 70),
-    Color2 = Color3.fromRGB(0, 150, 255),
-
-    ParticleColor = Color3.fromRGB(0, 100, 255),
-    SpawnRate = 0.15,
-
-    BoxThickness = 3.5, 
-    PulseSpeed = 1.2,
-    RotationSpeed = 3, 
-    MaxDistance = 3000, 
-}
-
 local Players = game:GetService("Players") 
 local RunService = game:GetService("RunService") 
 local TweenService = game:GetService("TweenService") 
+local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer 
-local Camera = workspace.CurrentCamera 
+local Camera = Workspace.CurrentCamera 
 
-local ParticleFolder = workspace:FindFirstChild("ESP_DarkBlue_Particles") or Instance.new("Folder", workspace)
-ParticleFolder.Name = "ESP_DarkBlue_Particles"
+local ESPSettings = {
+    Box_Color = Color3.fromRGB(255, 0, 0),
+    Box_Thickness = 2,
+    Team_Check = false,
+    Team_Color = false,
+    Autothickness = true
+}
 
 local ESPEnabled = false
-local ActiveESP = {} 
-local GlobalConnections = {} 
+local ESPData = {} 
 
-local function RemoveVanillaName(char)
-    local humanoid = char:FindFirstChildOfClass("Humanoid")
-    if humanoid then
-        humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+local function NewLine(color, thickness)
+    local line = Drawing.new("Line")
+    line.Visible = false
+    line.From = Vector2.new(0, 0)
+    line.To = Vector2.new(0, 0)
+    line.Color = color
+    line.Thickness = thickness
+    line.Transparency = 1
+    return line
+end
+
+local function Vis(lib, state)
+    for _, v in pairs(lib) do
+        v.Visible = state
     end
 end
 
-local function SpawnNeonParticle(pos)
-    if not ESPEnabled then return end
-    
-    local part = Instance.new("Part")
-    part.Size = Vector3.new(0.3, 0.3, 0.3)
-    part.Position = pos + Vector3.new(
-        math.random(-2,2),
-        -3.5,
-        math.random(-2,2)
-    )
-    part.Anchored = true 
-    part.CanCollide = false 
-    part.Shape = Enum.PartType.Ball
-    part.Material = Enum.Material.Neon 
-    part.Color = Settings.ParticleColor
-    part.Parent = ParticleFolder
+local function Colorize(lib, color)
+    for _, v in pairs(lib) do
+        v.Color = color
+    end
+end
 
-    local tween = TweenService:Create(part,
-        TweenInfo.new(1.8, Enum.EasingStyle.Quart),
-        {
-            Position = part.Position + Vector3.new(0, 7, 0),
-            Transparency = 1,
-            Size = Vector3.new(0,0,0)
-        }
-    )
-    tween:Play()
-    tween.Completed:Connect(function()
-        part:Destroy()
+local function RainbowLoop(lib)
+    task.spawn(function()
+        while ESPEnabled and lib do
+            for hue = 0, 1, 1/30 do
+                if not ESPEnabled then break end
+                local color = Color3.fromHSV(hue, 0.6, 1)
+                Colorize(lib, color)
+                task.wait(0.15)
+            end
+        end
     end)
 end
-local function CleanupPlayerESP(player)
-    if ActiveESP[player] then
-        if ActiveESP[player].BoxGui then ActiveESP[player].BoxGui:Destroy() end
-        if ActiveESP[player].NameGui then ActiveESP[player].NameGui:Destroy() end
-        if ActiveESP[player].Connections then
-            for _, conn in pairs(ActiveESP[player].Connections) do
-                conn:Disconnect()
+
+local function CleanupPlayerESP(plr)
+    if ESPData[plr] then
+        local data = ESPData[plr]
+        if data.Connection then data.Connection:Disconnect() end
+        if data.Library then
+            for _, line in pairs(data.Library) do
+                pcall(function() line:Remove() end)
             end
         end
-        ActiveESP[player] = nil
+        if data.OriPart then
+            pcall(function() data.OriPart:Destroy() end)
+        end
+        ESPData[plr] = nil
     end
 end
-local function ApplyESP(player)
-    if player == LocalPlayer then return end
-    local function OnChar(char)
-        if not ESPEnabled then return end
-        CleanupPlayerESP(player) -- ล้างของเก่าก่อนสร้างใหม่
-        RemoveVanillaName(char)
-        local root = char:WaitForChild("HumanoidRootPart", 15)
-        if not root or not ESPEnabled then return end
-        local playerName = player.Name
-        local userId = player.UserId
-        local boxGui = Instance.new("BillboardGui")
-        boxGui.Adornee = root 
-        boxGui.Size = UDim2.new(4,0,5.5,0) 
-        boxGui.AlwaysOnTop = true
-        boxGui.MaxDistance = Settings.MaxDistance
-        boxGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        local mainFrame = Instance.new("Frame")
-        mainFrame.Size = UDim2.new(1,0,1,0)
-        mainFrame.BackgroundTransparency = 1
-        mainFrame.Parent = boxGui
-        local corner = Instance.new("UICorner")
-        corner.CornerRadius = UDim.new(0.3, 0)
-        corner.Parent = mainFrame
-        local stroke = Instance.new("UIStroke")
-        stroke.Thickness = Settings.BoxThickness
-        stroke.Color = Color3.new(1,1,1)
-        stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-        stroke.Parent = mainFrame
-        local gradient = Instance.new("UIGradient")
-        gradient.Color = ColorSequence.new({
-            ColorSequenceKeypoint.new(0, Settings.Color1),
-            ColorSequenceKeypoint.new(0.5, Settings.Color2),
-            ColorSequenceKeypoint.new(1, Settings.Color1)
-        })
-        gradient.Parent = stroke
-        task.spawn(function()
-            while ESPEnabled and boxGui and boxGui.Parent do
-                gradient.Rotation += Settings.RotationSpeed
-                task.wait(0.02)
-            end
-        end)
-        local nameGui = Instance.new("BillboardGui")
-        nameGui.Adornee = root
-        nameGui.Size = UDim2.new(4,0,1.5,0)
-        nameGui.StudsOffset = Vector3.new(0, 3.5, 0) 
-        nameGui.AlwaysOnTop = true
-        nameGui.MaxDistance = Settings.MaxDistance
-        nameGui.Parent = LocalPlayer:WaitForChild("PlayerGui")
-        local container = Instance.new("Frame")
-        container.Size = UDim2.new(1,0,1,0)
-        container.BackgroundTransparency = 1
-        container.Parent = nameGui
-        local avatar = Instance.new("ImageLabel")
-        avatar.Size = UDim2.new(0.25,0,1,0)
-        avatar.BackgroundTransparency = 1
-        avatar.Parent = container
-        task.spawn(function()
-            local ok, img = pcall(function()
-                return Players:GetUserThumbnailAsync(
-                    userId,
-                    Enum.ThumbnailType.HeadShot,
-                    Enum.ThumbnailSize.Size150x150
-                )
-            end)
-            if ok and avatar then avatar.Image = img end
-        end)
-        local nameLabel = Instance.new("TextLabel")
-        nameLabel.Size = UDim2.new(0.75,0,1,0)
-        nameLabel.Position = UDim2.new(0.27,0,0,0)
-        nameLabel.BackgroundTransparency = 1
-        nameLabel.Text = playerName
-        nameLabel.TextScaled = true
-        nameLabel.TextColor3 = Color3.new(1,1,1)
-        nameLabel.TextStrokeTransparency = 0.3
-        nameLabel.Parent = container
-        pcall(function()
-            nameLabel.FontFace = Font.new("rbxassetid://11322590111")
-        end)
-        task.spawn(function()
-            while ESPEnabled and boxGui and boxGui.Parent do
-                if root and root.Parent then
-                    local dist = (Camera.CFrame.Position - root.Position).Magnitude
-                    if dist < 300 then
-                        SpawnNeonParticle(root.Position)
+
+local function ApplyESP(plr)
+    if plr == LocalPlayer or ESPData[plr] then return end
+
+    local library = {
+        TL1 = NewLine(ESPSettings.Box_Color, ESPSettings.Box_Thickness),
+        TL2 = NewLine(ESPSettings.Box_Color, ESPSettings.Box_Thickness),
+        TR1 = NewLine(ESPSettings.Box_Color, ESPSettings.Box_Thickness),
+        TR2 = NewLine(ESPSettings.Box_Color, ESPSettings.Box_Thickness),
+        BL1 = NewLine(ESPSettings.Box_Color, ESPSettings.Box_Thickness),
+        BL2 = NewLine(ESPSettings.Box_Color, ESPSettings.Box_Thickness),
+        BR1 = NewLine(ESPSettings.Box_Color, ESPSettings.Box_Thickness),
+        BR2 = NewLine(ESPSettings.Box_Color, ESPSettings.Box_Thickness)
+    }
+
+    RainbowLoop(library)
+
+    local oripart = Instance.new("Part")
+    oripart.Parent = Workspace
+    oripart.Transparency = 1
+    oripart.CanCollide = false
+    oripart.Size = Vector3.new(1, 1, 1)
+    oripart.Position = Vector3.new(0, 0, 0)
+
+    local renderConnection
+    renderConnection = RunService.RenderStepped:Connect(function()
+        if not ESPEnabled then
+            Vis(library, false)
+            return
+        end
+
+        local char = plr.Character
+        if char and char:FindFirstChild("Humanoid") and char:FindFirstChild("HumanoidRootPart") and char.Humanoid.Health > 0 and char:FindFirstChild("Head") then
+            local humRoot = char.HumanoidRootPart
+            local _, vis = Camera:WorldToViewportPoint(humRoot.Position)
+
+            if vis then
+                oripart.Size = Vector3.new(humRoot.Size.X, humRoot.Size.Y * 1.5, humRoot.Size.Z)
+                oripart.CFrame = CFrame.new(humRoot.CFrame.Position, Camera.CFrame.Position)
+                
+                local SizeX = oripart.Size.X
+                local SizeY = oripart.Size.Y
+                local TL = Camera:WorldToViewportPoint((oripart.CFrame * CFrame.new(SizeX, SizeY, 0)).p)
+                local TR = Camera:WorldToViewportPoint((oripart.CFrame * CFrame.new(-SizeX, SizeY, 0)).p)
+                local BL = Camera:WorldToViewportPoint((oripart.CFrame * CFrame.new(SizeX, -SizeY, 0)).p)
+                local BR = Camera:WorldToViewportPoint((oripart.CFrame * CFrame.new(-SizeX, -SizeY, 0)).p)
+
+                if ESPSettings.Team_Check then
+                    if plr.TeamColor == LocalPlayer.TeamColor then
+                        Colorize(library, Color3.fromRGB(0, 255, 0))
+                    else 
+                        Colorize(library, Color3.fromRGB(255, 0, 0))
                     end
                 end
-                task.wait(Settings.SpawnRate)
+
+                if ESPSettings.Team_Color then
+                    Colorize(library, plr.TeamColor.Color)
+                end
+
+                local ratio = (Camera.CFrame.p - humRoot.Position).Magnitude
+                local offset = math.clamp(1 / ratio * 750, 2, 300)
+
+                library.TL1.From = Vector2.new(TL.X, TL.Y)
+                library.TL1.To = Vector2.new(TL.X + offset, TL.Y)
+                library.TL2.From = Vector2.new(TL.X, TL.Y)
+                library.TL2.To = Vector2.new(TL.X, TL.Y + offset)
+
+                library.TR1.From = Vector2.new(TR.X, TR.Y)
+                library.TR1.To = Vector2.new(TR.X - offset, TR.Y)
+                library.TR2.From = Vector2.new(TR.X, TR.Y)
+                library.TR2.To = Vector2.new(TR.X, TR.Y + offset)
+
+                library.BL1.From = Vector2.new(BL.X, BL.Y)
+                library.BL1.To = Vector2.new(BL.X + offset, BL.Y)
+                library.BL2.From = Vector2.new(BL.X, BL.Y)
+                library.BL2.To = Vector2.new(BL.X, BL.Y - offset)
+
+                library.BR1.From = Vector2.new(BR.X, BR.Y)
+                library.BR1.To = Vector2.new(BR.X - offset, BR.Y)
+                library.BR2.From = Vector2.new(BR.X, BR.Y)
+                library.BR2.To = Vector2.new(BR.X, BR.Y - offset)
+
+                Vis(library, true)
+
+                if ESPSettings.Autothickness then
+                    local myChar = LocalPlayer.Character
+                    if myChar and myChar:FindFirstChild("HumanoidRootPart") then
+                        local distance = (myChar.HumanoidRootPart.Position - oripart.Position).Magnitude
+                        local value = math.clamp(1 / distance * 100, 1, 4)
+                        for _, x in pairs(library) do
+                            x.Thickness = value
+                        end
+                    end
+                else 
+                    for _, x in pairs(library) do
+                        x.Thickness = ESPSettings.Box_Thickness
+                    end
+                end
+            else 
+                Vis(library, false)
             end
-        end)
-        local renderConn
-        renderConn = RunService.RenderStepped:Connect(function()
-            if not char.Parent or not ESPEnabled then
-                CleanupPlayerESP(player)
+        else 
+            Vis(library, false)
+            if not Players:FindFirstChild(plr.Name) then
+                CleanupPlayerESP(plr)
             end
-        end)
-        ActiveESP[player] = {
-            BoxGui = boxGui,
-            NameGui = nameGui,
-            Connections = { renderConn }
-        }
-    end
-    local charAddedConn = player.CharacterAdded:Connect(OnChar)
-    if ActiveESP[player] then
-        table.insert(ActiveESP[player].Connections, charAddedConn)
-    else
-        ActiveESP[player] = { Connections = { charAddedConn } }
-    end
-    if player.Character then
-        task.spawn(OnChar, player.Character)
-    end
+        end
+    end)
+
+    ESPData[plr] = {
+        Library = library,
+        OriPart = oripart,
+        Connection = renderConnection
+    }
 end
 
-local ESPLoopThread = nil
+local PlayerAddedConnection = nil
 
 local function EnableESP()
-    if ESPEnabled then return end 
+    if ESPEnabled then return end
     ESPEnabled = true
 
-    ESPLoopThread = task.spawn(function()
-        while ESPEnabled do
-            -- 1. วนเช็กผู้เล่นทุกคนที่อยู่ในเซิร์ฟเวอร์
-            for _, player in pairs(Players:GetPlayers()) do
-                if player ~= LocalPlayer and player.Character then
-                    -- เรียก ApplyESP วนเช็ก/อัปเดตตลอดเวลา
-                    ApplyESP(player)
-                end
-            end
+    for _, plr in ipairs(Players:GetPlayers()) do
+        ApplyESP(plr)
+    end
 
-            task.wait(0.5)
-        end
+    PlayerAddedConnection = Players.PlayerAdded:Connect(function(plr)
+        ApplyESP(plr)
     end)
 end
 
 local function DisableESP()
     ESPEnabled = false
 
-    -- ยกเลิก Thread ของ Loop (ถ้ายังรันอยู่)
-    if ESPLoopThread then
-        task.cancel(ESPLoopThread)
-        ESPLoopThread = nil
+    if PlayerAddedConnection then
+        PlayerAddedConnection:Disconnect()
+        PlayerAddedConnection = nil
     end
 
-    -- ล้างข้อมูล ESP ที่แสดงผลอยู่ทั้งหมดออก
-    for player, _ in pairs(ActiveESP) do
-        CleanupPlayerESP(player)
+    for plr, _ in pairs(ESPData) do
+        CleanupPlayerESP(plr)
     end
-    table.clear(ActiveESP)
-
-    if ParticleFolder then
-        ParticleFolder:ClearAllChildren()
-    end
+    table.clear(ESPData)
 end
 
-
+------------------------------------------------------------------------
 -- Find Cars
-
+------------------------------------------------------------------------
 local function GetCarCFrame(car)
     if car:IsA("Model") and car.PrimaryPart then
         return car.PrimaryPart.CFrame
@@ -271,7 +257,7 @@ local function GetNearestCar()
     if not character or not character:FindFirstChild("HumanoidRootPart") then return nil, math.huge end
     
     local playerPos = character.HumanoidRootPart.Position
-    local carsFolder = workspace:FindFirstChild("Cars")
+    local carsFolder = Workspace:FindFirstChild("Cars")
     
     if not carsFolder then 
         print("ไม่พบโฟลเดอร์ Cars ใน workspace")
@@ -306,23 +292,22 @@ local function TeleportToNearestCar()
     local targetCar, distance, targetCFrame = GetNearestCar()
 
     if targetCar and targetCFrame then
-        -- วาร์ปไปที่ตำแหน่ง DriveSeat/PrimaryPart แล้วขยับขึ้นข้างบน 5 studs
         character.HumanoidRootPart.CFrame = targetCFrame * CFrame.new(0, 10, 0)
-        
         print("วาร์ปไปยัง " .. targetCar.Name .. " สำเร็จ! ระยะห่างเดิม:", math.floor(distance), "Studs")
     else
         print("ไม่พบตำแหน่งของรถในโฟลเดอร์ Cars")
     end
 end
 
--- FPS
+------------------------------------------------------------------------
+-- FPS Boost
+------------------------------------------------------------------------
 local sethiddenproperty = sethiddenproperty or set_hidden_property or set_hidden_prop
 local Lighting = game:GetService("Lighting")
-local Terrain = workspace.Terrain
+local Terrain = Workspace.Terrain
 local RenderSettings = settings():GetService("RenderSettings")
 local UserGameSettings = UserSettings():GetService("UserGameSettings")
 
--- เก็บค่าเดิมไว้ฟื้นฟูเมื่อปิดใช้งาน
 local OriginalSettings = {
     Lighting = {},
     Terrain = {},
@@ -334,12 +319,10 @@ local OriginalSettings = {
 local FPSBoostConnections = {}
 local IsFPSBoostEnabled = false
 
--- ฟังก์ชันเปิดใช้งาน FPS Boost
 local function EnableFPSBoost()
     if IsFPSBoostEnabled then return end
     IsFPSBoostEnabled = true
 
-    -- 1. บันทึกค่า Render & Lighting เดิม
     OriginalSettings.Lighting.GlobalShadows = Lighting.GlobalShadows
     OriginalSettings.Lighting.FogEnd = Lighting.FogEnd
     
@@ -350,14 +333,12 @@ local function EnableFPSBoost()
         pcall(sethiddenproperty, Lighting, "Technology", Enum.Technology.Compatibility)
     end
 
-    -- 2. ตั้งค่า Render Graphics
     RenderSettings.EagerBulkExecution = false
     RenderSettings.QualityLevel = Enum.QualityLevel.Level01
     RenderSettings.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
     UserGameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
-    workspace.InterpolationThrottling = Enum.InterpolationThrottlingMode.Enabled
+    Workspace.InterpolationThrottling = Enum.InterpolationThrottlingMode.Enabled
 
-    -- 3. บันทึกและปรับค่า Terrain Water
     OriginalSettings.Terrain.WaterWaveSize = Terrain.WaterWaveSize
     OriginalSettings.Terrain.WaterWaveSpeed = Terrain.WaterWaveSpeed
     OriginalSettings.Terrain.WaterReflectance = Terrain.WaterReflectance
@@ -369,10 +350,8 @@ local function EnableFPSBoost()
     Terrain.WaterTransparency = 0
     if sethiddenproperty then pcall(sethiddenproperty, Terrain, "Decoration", false) end
 
-    -- 4. จัดการ Object ในเกม (ลบเงา/ปรับ Material/ปิด Effect)
     for _, Object in ipairs(game:GetDescendants()) do
         if Object:IsA("BasePart") then
-            -- เก็บค่าเดิม
             OriginalSettings.SavedMaterials[Object] = Object.Material
             OriginalSettings.SavedShadows[Object] = Object.CastShadow
             
@@ -390,7 +369,6 @@ local function EnableFPSBoost()
         end
     end
 
-    -- 5. ดักจับไอเทมสร้างใหม่ระหว่างเล่น ให้ปรับกะโหลกอัตโนมัติ
     local descAdded = game.DescendantAdded:Connect(function(Object)
         if not IsFPSBoostEnabled then return end
         if Object:IsA("BasePart") then
@@ -403,18 +381,15 @@ local function EnableFPSBoost()
     table.insert(FPSBoostConnections, descAdded)
 end
 
--- ฟังก์ชันปิดใช้งาน FPS Boost (คืนค่าเดิม)
 local function DisableFPSBoost()
     if not IsFPSBoostEnabled then return end
     IsFPSBoostEnabled = false
 
-    -- ตัดการเชื่อมต่อ Event
     for _, conn in ipairs(FPSBoostConnections) do
         if conn then conn:Disconnect() end
     end
     table.clear(FPSBoostConnections)
 
-    -- คืนค่า Lighting & Terrain
     Lighting.GlobalShadows = OriginalSettings.Lighting.GlobalShadows or true
     Lighting.FogEnd = OriginalSettings.Lighting.FogEnd or 100000
 
@@ -423,7 +398,6 @@ local function DisableFPSBoost()
     Terrain.WaterReflectance = OriginalSettings.Terrain.WaterReflectance or 1
     Terrain.WaterTransparency = OriginalSettings.Terrain.WaterTransparency or 1
 
-    -- คืนค่าวัตถุต่างๆ
     for obj, mat in pairs(OriginalSettings.SavedMaterials) do
         if obj and obj.Parent then obj.Material = mat end
     end
@@ -440,14 +414,14 @@ local function DisableFPSBoost()
         end
     end
 
-    -- ล้างตาราง
     table.clear(OriginalSettings.SavedMaterials)
     table.clear(OriginalSettings.SavedShadows)
     table.clear(OriginalSettings.SavedEffects)
 end
 
--- Speed
-
+------------------------------------------------------------------------
+-- WalkSpeed Settings
+------------------------------------------------------------------------
 getgenv().SpeedSettings = getgenv().SpeedSettings or {
     Enabled = false,
     Speed = 16,
@@ -522,7 +496,9 @@ LocalPlayer.CharacterAdded:Connect(function()
     end
 end)
 
-
+------------------------------------------------------------------------
+-- Teleport List & UI Setup
+------------------------------------------------------------------------
 local TeleportValue = {
     "not select",
     "farm_01",
@@ -537,12 +513,11 @@ local TeleportList = {
 local Options = Fluent.Options
 
 do
-
     Tabs.Main:AddButton({
         Title = "Teleport To Nearest Car",
         Description = "วาร์ปไปยังรถที่อยู่ใกล้",
         Callback = function()
-			TeleportToNearestCar()
+            TeleportToNearestCar()
         end
     })
 
@@ -559,8 +534,7 @@ do
         local targetPosition = TeleportList[Value]
         
         if targetPosition then
-            local player = game.Players.LocalPlayer
-            local character = player.Character or player.CharacterAdded:Wait()
+            local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
             local hrp = character:FindFirstChild("HumanoidRootPart")
             
             if hrp then
@@ -569,7 +543,7 @@ do
         end
     end)
 
-    local Toggle = Tabs.Main:AddToggle("ESPToggle", { Title = "DarkBlue Neon ESP", Default = false })
+    local Toggle = Tabs.Main:AddToggle("ESPToggle", { Title = "Drawing Box Corner ESP", Default = false })
     Toggle:OnChanged(function()
         local state = Options.ESPToggle.Value
         if state then
@@ -579,6 +553,7 @@ do
         end
     end)
     Options.ESPToggle:SetValue(false)
+
     local FPSToggle = Tabs.Main:AddToggle("FPSToggle", { Title = "FPS Boost (Optimized)", Default = false })
     FPSToggle:OnChanged(function()
         local state = Options.FPSToggle.Value
@@ -599,7 +574,8 @@ do
             DisableSpeed()
         end
     end)
-    local SpeedSlider = Tabs.Main:AddSlider("SpeedSlider", {
+
+    Tabs.Main:AddSlider("SpeedSlider", {
         Title = "Speed Value",
         Description = "ปรับความเร็วการเดิน/วิ่ง",
         Default = 16,
@@ -613,14 +589,12 @@ do
             end
         end
     })
-
 end
 
 SaveManager:SetLibrary(Fluent)
 InterfaceManager:SetLibrary(Fluent)
 
 SaveManager:IgnoreThemeSettings()
-
 SaveManager:SetIgnoreIndexes({})
 
 InterfaceManager:SetFolder("FluentScriptHub")
