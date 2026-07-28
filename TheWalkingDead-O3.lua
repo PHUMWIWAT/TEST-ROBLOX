@@ -27,7 +27,7 @@ local Settings = {
     BoxThickness = 3.5, 
     PulseSpeed = 1.2,
     RotationSpeed = 3, 
-    MaxDistance = 2500, 
+    MaxDistance = 3000, 
 }
 
 local Players = game:GetService("Players") 
@@ -204,58 +204,44 @@ local function ApplyESP(player)
     end
 end
 
+local ESPLoopThread = nil
+
 local function EnableESP()
+    if ESPEnabled then return end -- ป้องกันการรันซ้ำ
     ESPEnabled = true
-    
-    -- ใส่ ESP ให้ผู้เล่นทุกคนที่มีอยู่ในปัจจุบัน
-    for _, p in pairs(Players:GetPlayers()) do
-        ApplyESP(p)
-    end
-    
-    -- เมื่อมีผู้เล่นใหม่เข้ามา
-    local pAdded = Players.PlayerAdded:Connect(function(p)
-        if not ESPEnabled then return end
-        
-        -- ถ้าตัวละครเกิดอยู่แล้ว ให้เรียกเลย
-        if p.Character then
-            ApplyESP(p)
-        end
-        
-        -- ดักจับเมื่อผู้เล่นเกิดใหม่ (หรือโหลดตัวละครเสร็จ)
-        local charAdded = p.CharacterAdded:Connect(function(character)
-            if ESPEnabled then
-                ApplyESP(p)
+
+    -- ใช้ task.spawn เพื่อให้ Loop ทำงานแยกเบื้องหลัง ไม่ค้าง Thread หลัก
+    ESPLoopThread = task.spawn(function()
+        while ESPEnabled do
+            -- 1. วนเช็กผู้เล่นทุกคนที่อยู่ในเซิร์ฟเวอร์
+            for _, player in pairs(Players:GetPlayers()) do
+                if player ~= LocalPlayer and player.Character then
+                    -- เรียก ApplyESP วนเช็ก/อัปเดตตลอดเวลา
+                    ApplyESP(player)
+                end
             end
-        end)
-        
-        table.insert(GlobalConnections, charAdded)
+
+            -- 2. หน่วงเวลาเล็กน้อยเพื่อไม่ให้เครื่องกระตุก (0.5 วินาทีถือว่ากำลังดี)
+            task.wait(0.5)
+        end
     end)
-    
-    local pRemoving = Players.PlayerRemoving:Connect(function(p)
-        CleanupPlayerESP(p)
-    end)
-    
-    table.insert(GlobalConnections, pAdded)
-    table.insert(GlobalConnections, pRemoving)
 end
 
 local function DisableESP()
     ESPEnabled = false
-    
-    -- ตัดการเชื่อมต่อ Connections ทั้งหมด
-    for _, conn in pairs(GlobalConnections) do
-        if conn and conn.Connected then
-            conn:Disconnect()
-        end
+
+    -- ยกเลิก Thread ของ Loop (ถ้ายังรันอยู่)
+    if ESPLoopThread then
+        task.cancel(ESPLoopThread)
+        ESPLoopThread = nil
     end
-    table.clear(GlobalConnections)
-    
-    -- ล้างข้อมูล ESP ที่ค้างอยู่
+
+    -- ล้างข้อมูล ESP ที่แสดงผลอยู่ทั้งหมดออก
     for player, _ in pairs(ActiveESP) do
         CleanupPlayerESP(player)
     end
     table.clear(ActiveESP)
-    
+
     if ParticleFolder then
         ParticleFolder:ClearAllChildren()
     end
@@ -333,6 +319,149 @@ local function TeleportToNearestCar()
     end
 end
 
+-- FPS
+local sethiddenproperty = sethiddenproperty or set_hidden_property or set_hidden_prop
+local Lighting = game:GetService("Lighting")
+local Terrain = workspace.Terrain
+local RenderSettings = settings():GetService("RenderSettings")
+local UserGameSettings = UserSettings():GetService("UserGameSettings")
+
+-- เก็บค่าเดิมไว้ฟื้นฟูเมื่อปิดใช้งาน
+local OriginalSettings = {
+    Lighting = {},
+    Terrain = {},
+    SavedMaterials = {},
+    SavedShadows = {},
+    SavedEffects = {}
+}
+
+local FPSBoostConnections = {}
+local IsFPSBoostEnabled = false
+
+-- ฟังก์ชันเปิดใช้งาน FPS Boost
+local function EnableFPSBoost()
+    if IsFPSBoostEnabled then return end
+    IsFPSBoostEnabled = true
+
+    -- 1. บันทึกค่า Render & Lighting เดิม
+    OriginalSettings.Lighting.GlobalShadows = Lighting.GlobalShadows
+    OriginalSettings.Lighting.FogEnd = Lighting.FogEnd
+    
+    Lighting.GlobalShadows = false
+    Lighting.FogEnd = 1e9
+
+    if sethiddenproperty then
+        pcall(sethiddenproperty, Lighting, "Technology", Enum.Technology.Compatibility)
+    end
+
+    -- 2. ตั้งค่า Render Graphics
+    RenderSettings.EagerBulkExecution = false
+    RenderSettings.QualityLevel = Enum.QualityLevel.Level01
+    RenderSettings.MeshPartDetailLevel = Enum.MeshPartDetailLevel.Level01
+    UserGameSettings.SavedQualityLevel = Enum.SavedQualitySetting.QualityLevel1
+    workspace.InterpolationThrottling = Enum.InterpolationThrottlingMode.Enabled
+
+    -- 3. บันทึกและปรับค่า Terrain Water
+    OriginalSettings.Terrain.WaterWaveSize = Terrain.WaterWaveSize
+    OriginalSettings.Terrain.WaterWaveSpeed = Terrain.WaterWaveSpeed
+    OriginalSettings.Terrain.WaterReflectance = Terrain.WaterReflectance
+    OriginalSettings.Terrain.WaterTransparency = Terrain.WaterTransparency
+
+    Terrain.WaterWaveSize = 0
+    Terrain.WaterWaveSpeed = 0
+    Terrain.WaterReflectance = 0
+    Terrain.WaterTransparency = 0
+    if sethiddenproperty then pcall(sethiddenproperty, Terrain, "Decoration", false) end
+
+    -- 4. จัดการ Object ในเกม (ลบเงา/ปรับ Material/ปิด Effect)
+    for _, Object in ipairs(game:GetDescendants()) do
+        if Object:IsA("BasePart") then
+            -- เก็บค่าเดิม
+            OriginalSettings.SavedMaterials[Object] = Object.Material
+            OriginalSettings.SavedShadows[Object] = Object.CastShadow
+            
+            Object.Material = Enum.Material.SmoothPlastic
+            Object.CastShadow = false
+        elseif Object:IsA("ParticleEmitter") or Object:IsA("Sparkles") or Object:IsA("Smoke") or Object:IsA("Trail") or Object:IsA("Fire") then
+            OriginalSettings.SavedEffects[Object] = Object.Enabled
+            Object.Enabled = false
+        elseif Object:IsA("PostEffect") or Object:IsA("Atmosphere") then
+            OriginalSettings.SavedEffects[Object] = Object.Enabled
+            Object.Enabled = false
+        elseif (Object:IsA("Decal") or Object:IsA("Texture")) and string.lower(Object.Parent.Name) ~= "head" then
+            OriginalSettings.SavedEffects[Object] = Object.Transparency
+            Object.Transparency = 1
+        end
+    end
+
+    -- 5. ดักจับไอเทมสร้างใหม่ระหว่างเล่น ให้ปรับกะโหลกอัตโนมัติ
+    local descAdded = game.DescendantAdded:Connect(function(Object)
+        if not IsFPSBoostEnabled then return end
+        if Object:IsA("BasePart") then
+            Object.Material = Enum.Material.SmoothPlastic
+            Object.CastShadow = false
+        elseif Object:IsA("ParticleEmitter") or Object:IsA("Sparkles") or Object:IsA("Smoke") or Object:IsA("Trail") or Object:IsA("Fire") then
+            Object.Enabled = false
+        end
+    end)
+    table.insert(FPSBoostConnections, descAdded)
+end
+
+-- ฟังก์ชันปิดใช้งาน FPS Boost (คืนค่าเดิม)
+local function DisableFPSBoost()
+    if not IsFPSBoostEnabled then return end
+    IsFPSBoostEnabled = false
+
+    -- ตัดการเชื่อมต่อ Event
+    for _, conn in ipairs(FPSBoostConnections) do
+        if conn then conn:Disconnect() end
+    end
+    table.clear(FPSBoostConnections)
+
+    -- คืนค่า Lighting & Terrain
+    Lighting.GlobalShadows = OriginalSettings.Lighting.GlobalShadows or true
+    Lighting.FogEnd = OriginalSettings.Lighting.FogEnd or 100000
+
+    Terrain.WaterWaveSize = OriginalSettings.Terrain.WaterWaveSize or 0.15
+    Terrain.WaterWaveSpeed = OriginalSettings.Terrain.WaterWaveSpeed or 10
+    Terrain.WaterReflectance = OriginalSettings.Terrain.WaterReflectance or 1
+    Terrain.WaterTransparency = OriginalSettings.Terrain.WaterTransparency or 1
+
+    -- คืนค่าวัตถุต่างๆ
+    for obj, mat in pairs(OriginalSettings.SavedMaterials) do
+        if obj and obj.Parent then obj.Material = mat end
+    end
+    for obj, shadow in pairs(OriginalSettings.SavedShadows) do
+        if obj and obj.Parent then obj.CastShadow = shadow end
+    end
+    for obj, state in pairs(OriginalSettings.SavedEffects) do
+        if obj and obj.Parent then
+            if typeof(state) == "boolean" then
+                obj.Enabled = state
+            elseif typeof(state) == "number" then
+                obj.Transparency = state
+            end
+        end
+    end
+
+    -- ล้างตาราง
+    table.clear(OriginalSettings.SavedMaterials)
+    table.clear(OriginalSettings.SavedShadows)
+    table.clear(OriginalSettings.SavedEffects)
+end
+
+local function SetNPCIgnore(state)
+    local LocalPlayer = game:GetService("Players").LocalPlayer
+    local character = LocalPlayer.Character
+    if not character then return end
+
+    for _, part in ipairs(character:GetDescendants()) do
+        if part:IsA("BasePart") then
+            part.CanQuery = not state
+            part.CanTouch = not state
+        end
+    end
+end
 
 local TeleportValue = {
     "not select",
@@ -348,6 +477,15 @@ local TeleportList = {
 local Options = Fluent.Options
 
 do
+    
+    Tabs.Main:AddButton({
+        Title = "Teleport To Nearest Car",
+        Description = "วาร์ปไปยังรถที่อยู่ใกล้",
+        Callback = function()
+			TeleportToNearestCar()
+        end
+    })
+
     local Dropdown = Tabs.Main:AddDropdown("Dropdown", {
         Title = "Teleport (Coordinates)",
         Values = TeleportValue,
@@ -382,14 +520,26 @@ do
     end)
     Options.ESPToggle:SetValue(false)
 
-    Tabs.Main:AddButton({
-        Title = "Teleport To Nearest Car",
-        Description = "วาร์ปไปยังรถที่อยู่ใกล้",
-        Callback = function()
-			TeleportToNearestCar()
+    -- Toggle สำหรับเปิด/ปิด FPS Boost
+    local FPSToggle = Tabs.Main:AddToggle("FPSToggle", { Title = "FPS Boost (Optimized)", Default = false })
+    FPSToggle:OnChanged(function()
+        local state = Options.FPSToggle.Value
+        if state then
+            EnableFPSBoost()
+        else
+            DisableFPSBoost()
         end
-    })
+    end)
+    Options.FPSToggle:SetValue(false)
 
+    local IgnoreToggle = Tabs.Main:AddToggle("IgnoreToggle", { Title = "Walkers Ignore Me", Default = false })
+
+    IgnoreToggle:OnChanged(function()
+        local state = Options.IgnoreToggle.Value
+        SetNPCIgnore(state)
+    end)
+
+    Options.IgnoreToggle:SetValue(false)
 
 end
 
