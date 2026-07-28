@@ -286,8 +286,16 @@ local TeleportValue = {
     "bunker",
 }
 local TeleportList = {
-    ['farm_01'] = game:GetService("Workspace").Lootables.Loot_MilitaryCrate.Loot_MilitaryCrate,
-    ['bunker'] = game:GetService("Workspace").Model.Trap,
+    ['farm_01'] = function()
+        local lootables = workspace:FindFirstChild("Lootables")
+        local crateFolder = lootables and lootables:FindFirstChild("Loot_MilitaryCrate")
+        return crateFolder and crateFolder:FindFirstChild("Loot_MilitaryCrate")
+    end,
+    
+    ['bunker'] = function()
+        local model = workspace:FindFirstChild("Model")
+        return model and model:FindFirstChild("Trap")
+    end,
 }
 
 local Options = Fluent.Options
@@ -301,13 +309,43 @@ do
         Default = 1,
     })
     Dropdown:SetValue("notSelect")
+    -- Dropdown:OnChanged(function(Value)
+    --     local target = TeleportList[Value]
+    --     if target then
+    --         local player = game.Players.LocalPlayer
+    --         local character = player.Character or player.CharacterAdded:Wait()
+    --         local hrp = character:WaitForChild("HumanoidRootPart")
+    --         hrp.CFrame = target.CFrame + Vector3.new(0, 5, 0)
+    --     end
+    -- end)
     Dropdown:OnChanged(function(Value)
-        local target = TeleportList[Value]
-        if target then
-            local player = game.Players.LocalPlayer
-            local character = player.Character or player.CharacterAdded:Wait()
-            local hrp = character:WaitForChild("HumanoidRootPart")
-            hrp.CFrame = target.CFrame + Vector3.new(0, 5, 0)
+        local getTargetFn = TeleportList[Value]
+        if not getTargetFn then return end
+    
+        local target = getTargetFn()
+    
+        if target and target.Parent then
+            local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            local hrp = character:FindFirstChild("HumanoidRootPart")
+            
+            if hrp then
+                local targetCFrame = nil
+                if target:IsA("BasePart") then
+                    targetCFrame = target.CFrame
+                elseif target:IsA("Model") then
+                    targetCFrame = target:GetPivot() -- ดึง CFrame จาก PrimaryPart หรือกลางโมเดล
+                end
+    
+                if targetCFrame then
+                    pcall(function()
+                        LocalPlayer:RequestStreamAroundAsync(targetCFrame.Position)
+                    end)
+    
+                    hrp.CFrame = targetCFrame + Vector3.new(0, 5, 0)
+                end
+            end
+        else
+            -- warn("[Teleport] ไม่พบวัตถุเป้าหมาย หรือวัตถุยิ่ว/ยังไม่ Spawn ในระยะ!")
         end
     end)
 
