@@ -496,6 +496,66 @@ LocalPlayer.CharacterAdded:Connect(function()
     end
 end)
 
+local SelectedPlayerName = nil
+
+-- 1. ฟังก์ชันดึงรายชื่อผู้เล่นทั้งหมดในเซิร์ฟเวอร์ (ยกเว้นตัวเราเอง)
+local function GetPlayerList()
+    local playerNames = {}
+    local myCharacter = LocalPlayer.Character
+    local myRoot = myCharacter and myCharacter:FindFirstChild("HumanoidRootPart")
+
+    for _, p in ipairs(Players:GetPlayers()) do
+        if p ~= LocalPlayer then
+            local targetChar = p.Character
+            -- เช็กว่ามี HumanoidRootPart หรือไม่ (ถ้าอยู่ไกลจน Streaming ไม่โหลด ค่านี้จะเป็น nil)
+            local targetRoot = targetChar and targetChar:FindFirstChild("HumanoidRootPart")
+            
+            if targetRoot then
+                -- (Option) ถ้าต้องการจำกัดระยะด้วย Studs เช่น ไม่เกิน 500 Studs สามารถเปิดใช้เงื่อนไขนี้ได้
+                -- local distance = (myRoot.Position - targetRoot.Position).Magnitude
+                -- if distance <= 500 then
+                    table.insert(playerNames, p.Name)
+                -- end
+            end
+        end
+    end
+
+    -- ถ้าไม่มีใครอยู่ในระยะเลย ให้ใส่ข้อความแจ้งเตือนไว้ใน Dropdown
+    if #playerNames == 0 then
+        table.insert(playerNames, "ไม่พบผู้เล่นในระยะ")
+    end
+
+    return playerNames
+end
+
+-- 2. ฟังก์ชันวาร์ปไปหาผู้เล่นที่เลือก
+local function TeleportToPlayer(targetName)
+    if not targetName then
+        print("❌ กรุณาเลือกผู้เล่นจาก Dropdown ก่อน")
+        return
+    end
+
+    local targetPlayer = Players:FindFirstChild(targetName)
+    if not targetPlayer then
+        print("❌ ไม่พบผู้เล่นชื่อ:", targetName, "(อาจจะออกจากเกมไปแล้ว)")
+        return
+    end
+
+    local character = LocalPlayer.Character
+    local targetCharacter = targetPlayer.Character
+
+    local myRoot = character and character:FindFirstChild("HumanoidRootPart")
+    local targetRoot = targetCharacter and targetCharacter:FindFirstChild("HumanoidRootPart")
+
+    if myRoot and targetRoot then
+        -- วาร์ปไปด้านหลังของผู้เล่นคนนั้นเล็กน้อย (ขยับแกน Z ออกไป -3)
+        myRoot.CFrame = targetRoot.CFrame * CFrame.new(0, 0, 3)
+        print("⚡ วาร์ปไปหา " .. targetName .. " สำเร็จ!")
+    else
+        print("❌ ตัวละครของคุณหรือเป้าหมายยังโหลดไม่เสร็จ")
+    end
+end
+
 ------------------------------------------------------------------------
 -- Teleport List & UI Setup
 ------------------------------------------------------------------------
@@ -513,6 +573,45 @@ local TeleportList = {
 local Options = Fluent.Options
 
 do
+
+    -- สร้าง Dropdown
+    local PlayerDropdown = Tabs.Main:AddDropdown("PlayerSelect", {
+        Title = "เลือกผู้เล่น",
+        Values = GetPlayerList(),
+        Multi = false,
+        Default = nil,
+        Callback = function(Value)
+            SelectedPlayerName = Value
+        end
+    })
+    -- 🔄 ระบบ Auto-Update รายชื่อผู้เล่นใน Dropdown เมื่อมีคนเข้า-ออก
+    Players.PlayerAdded:Connect(function()
+        PlayerDropdown:SetValues(GetPlayerList())
+    end)
+
+    Players.PlayerRemoving:Connect(function()
+        PlayerDropdown:SetValues(GetPlayerList())
+    end)
+
+    -- ปุ่มวาร์ป
+    Tabs.Main:AddButton({
+        Title = "Teleport To Player",
+        Description = "วาร์ปไปหาผู้เล่นที่เลือก",
+        Callback = function()
+            TeleportToPlayer(SelectedPlayerName)
+        end
+    })
+
+    -- ปุ่มกดรีเฟรชรายชื่อผู้เล่นใกล้นี้
+    Tabs.Main:AddButton({
+        Title = "Refresh Player List",
+        Description = "อัปเดตรายชื่อผู้เล่นที่อยู่ในระยะ",
+        Callback = function()
+            PlayerDropdown:SetValues(GetPlayerList())
+            print("🔄 อัปเดตรายชื่อผู้เล่นในระยะแล้ว")
+        end
+    })
+
     Tabs.Main:AddButton({
         Title = "Teleport To Nearest Car",
         Description = "วาร์ปไปยังรถที่อยู่ใกล้",
